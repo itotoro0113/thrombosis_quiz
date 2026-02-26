@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>血栓知識挑戰賽</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto+Sans+TC', sans-serif;
+            background-color: #f0f2f5;
+            overflow-x: hidden;
+            touch-action: manipulation;
+        }
+
+        .card {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .q1-bg { background-color: #f0f7ff; }
+        .q2-bg { background-color: #fdf4ff; }
+        
+        .correct-bg { background-color: #d1fae5 !important; }
+        .wrong-bg { background-color: #fee2e2 !important; }
+
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .option-btn {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(4px);
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div id="game-container" class="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 md:p-8 card relative overflow-hidden">
+        <div class="absolute top-0 left-0 h-1.5 bg-blue-500 transition-all duration-500" id="progress-bar" style="width: 0%"></div>
+        <div id="content" class="fade-in"></div>
+        <div id="feedback" class="mt-4 text-center font-bold h-8"></div>
+    </div>
+
+    <script>
+        const quizData = [
+            {
+                type: 'question',
+                id: 1,
+                title: '題目 1',
+                themeClass: 'q1-bg',
+                question: '哪一種血栓症的死亡率特別高？',
+                options: [
+                    { label: 'A. 腿部深層靜脈栓塞', value: 'A' },
+                    { label: 'B. 肺栓塞', value: 'B' },
+                    { label: 'C. 腦部血栓', value: 'C' }
+                ],
+                correct: 'B',
+                explanation: '答案 B. 肺栓塞，死亡率高達65%！😱<br><br>這比被鯊魚攻擊的死亡率還高得多！肺栓塞就像是你的肺部突然被堵住了呼吸道，氧氣無法進入血液，導致全身缺氧。'
+            },
+            {
+                type: 'question',
+                id: 2,
+                title: '題目 2',
+                themeClass: 'q2-bg',
+                question: '傳統導管溶栓和超音波漩渦溶栓的血塊粒徑差別有多少？',
+                options: [
+                    { label: 'A. 差不多大小', value: 'A' },
+                    { label: 'B. 超音波漩渦比傳統小5倍', value: 'B' },
+                    { label: 'C. 超音波漩渦比傳統小10倍', value: 'C' }
+                ],
+                correct: 'C',
+                explanation: '答案：C<br><br>傳統分解的血塊粒徑常 > 0.01 公分，而超音波漩渦技術能將血栓分解成僅 0.001 公分的微粒！這就像把一塊石頭變成了細沙！'
+            }
+        ];
+
+        let gameState = 'start';
+        let currentStep = 0;
+        let isShowingExplanation = false;
+
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+        
+        function playSound(type) {
+            if (!audioCtx) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            if (type === 'correct') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); 
+                oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            } else if (type === 'wrong') {
+                oscillator.type = 'square';
+                oscillator.frequency.setValueAtTime(110, audioCtx.currentTime);
+                oscillator.frequency.setValueAtTime(100, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.25);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.25);
+            } else {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1);
+            }
+        }
+
+        function render() {
+            const container = document.getElementById('content');
+            const feedback = document.getElementById('feedback');
+            const progressBar = document.getElementById('progress-bar');
+            const gameCard = document.getElementById('game-container');
+            
+            feedback.innerHTML = '';
+            gameCard.className = 'w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 md:p-8 card relative overflow-hidden';
+
+            if (gameState === 'start') {
+                renderStartPage();
+                return;
+            }
+
+            if (currentStep >= quizData.length) {
+                renderResult();
+                return;
+            }
+
+            const data = quizData[currentStep];
+            
+            if (!isShowingExplanation) {
+                gameCard.classList.add(data.themeClass);
+                progressBar.style.width = `${(currentStep / quizData.length) * 100}%`;
+                container.innerHTML = `
+                    <h2 class="text-blue-600 font-bold text-sm mb-2 tracking-widest uppercase">${data.title}</h2>
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 mb-6 leading-snug">${data.question}</h1>
+                    <div class="space-y-3">
+                        ${data.options.map(opt => `
+                            <button onclick="checkAnswer('${opt.value}')" 
+                                class="option-btn w-full text-left p-4 md:p-5 rounded-2xl border-2 border-white/50 shadow-sm hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 focus:outline-none font-medium text-gray-700 active:scale-[0.98]">
+                                ${opt.label}
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                gameCard.classList.add('correct-bg');
+                progressBar.style.width = `${((currentStep + 1) / quizData.length) * 100}%`;
+                container.innerHTML = `
+                    <div class="text-center mb-6">
+                        <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-white shadow-sm text-green-500 mb-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <h2 class="text-2xl font-bold text-gray-800">答對了！</h2>
+                    </div>
+                    <div class="bg-white/60 backdrop-blur-sm p-5 rounded-2xl text-gray-700 leading-relaxed text-base md:text-lg mb-6 shadow-inner border border-white">
+                        ${data.explanation}
+                    </div>
+                    <button onclick="nextStep()" 
+                        class="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg active:scale-95">
+                        ${currentStep === quizData.length - 1 ? '完成挑戰' : '下一題'}
+                    </button>
+                `;
+            }
+        }
+
+        function renderStartPage() {
+            const container = document.getElementById('content');
+            document.getElementById('progress-bar').style.width = '0%';
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="inline-block p-4 bg-blue-50 rounded-full mb-6 text-blue-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 md:h-16 md:w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-4">血栓知識問答</h1>
+                    <p class="text-gray-600 mb-8 text-base md:text-lg">了解沉默的殺手「血栓」嗎？<br>測試您的健康知識！</p>
+                    <button onclick="startGame()" 
+                        class="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold text-xl hover:bg-blue-700 shadow-xl active:scale-95 flex items-center justify-center space-x-2">
+                        <span>開始挑戰</span>
+                    </button>
+                </div>
+            `;
+        }
+
+        window.startGame = function() {
+            initAudio();
+            playSound('click');
+            gameState = 'quiz';
+            render();
+        };
+
+        window.checkAnswer = function(value) {
+            const data = quizData[currentStep];
+            const feedback = document.getElementById('feedback');
+            const gameCard = document.getElementById('game-container');
+            if (value === data.correct) {
+                playSound('correct');
+                isShowingExplanation = true;
+                render();
+            } else {
+                playSound('wrong');
+                gameCard.classList.add('shake', 'wrong-bg');
+                feedback.innerHTML = '<span class="text-red-600 bg-white/50 px-3 py-1 rounded-full text-sm">❌ 答錯了，再試一次！</span>';
+                setTimeout(() => gameCard.classList.remove('shake', 'wrong-bg'), 500);
+            }
+        };
+
+        window.nextStep = function() {
+            playSound('click');
+            isShowingExplanation = false;
+            currentStep++;
+            render();
+        };
+
+        function renderResult() {
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="text-center py-6">
+                    <div class="text-6xl mb-4">🎉</div>
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-4">挑戰成功！</h1>
+                    <button onclick="resetToStart()" class="px-10 py-4 bg-gray-900 text-white rounded-2xl font-bold shadow-xl active:scale-95">確定並返回首頁</button>
+                </div>
+            `;
+        }
+
+        window.resetToStart = function() {
+            playSound('click');
+            gameState = 'start';
+            currentStep = 0;
+            isShowingExplanation = false;
+            render();
+        };
+
+        render();
+    </script>
+</body>
+</html>
+
+
